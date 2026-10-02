@@ -1029,17 +1029,14 @@ export function apply(ctx) {
 			input: { hint: '<version> [<remote>] [message=<text>] [rev=<rev>] [cwd=<dir>]  |  --push [version] [<remote>] [cwd=<dir>]' },
 			async handler(invocation) {
 				const parsed = parseArgs(invocation.rawInput, ['--push'], ['message', 'rev', 'remote', 'cwd']);
-				const resolved = await commandTarget(invocation, parsed.options);
-				if (resolved.refusal !== undefined) return resolved.refusal;
-				const { executable, root, signal } = resolved;
 				const pushOnly = parsed.flags.has('--push');
 				const words = parsed.words.map((word) => word.trim()).filter((word) => word !== '');
 				const version = words[0] ?? '';
 				const positionalRemote = words[1];
 
-				// Options take `name=value` in ONE word, so a value containing a space
-				// arrives as extra words. Reject them rather than reading the second word
-				// as the push target, which would send the tag to the wrong place.
+				// Argument shape is checked BEFORE the repository is resolved. A malformed
+				// invocation must be reported as such even when the Session directory is not
+				// a git repository, otherwise this command blames the wrong problem.
 				if (words.length > 2) {
 					return fail(
 						[
@@ -1053,6 +1050,27 @@ export function apply(ctx) {
 						].join('\n'),
 					);
 				}
+
+				// Without --push a version is mandatory: this command does not list tags.
+				// /git-tag-show is the read-only way to see what already exists.
+				if (!pushOnly && version === '') {
+					return fail(
+						[
+							'A version name is required.',
+							'',
+							'  /git-tag v1.0.0                    create v1.0.0 and push it to origin',
+							'  /git-tag v1.0.0 origin message=first-release',
+							'  /git-tag --push v1.0.0             push a tag that is still local',
+							'  /git-tag --push                    push every local tag',
+							'',
+							'List existing versions with /git-tag-show',
+						].join('\n'),
+					);
+				}
+
+				const resolved = await commandTarget(invocation, parsed.options);
+				if (resolved.refusal !== undefined) return resolved.refusal;
+				const { executable, root, signal } = resolved;
 
 				// The push target is the second word, as in `/git-tag v1.0.0 origin`;
 				// remote=<name> is accepted as an equivalent spelling. It defaults to the
@@ -1111,22 +1129,6 @@ export function apply(ctx) {
 							].join('\n'),
 						);
 					}
-				}
-
-				// Without --push a version is mandatory: this command does not list tags.
-				if (!pushOnly && version === '') {
-					return fail(
-						[
-							'A version name is required.',
-							'',
-							'  /git-tag v1.0.0                    create v1.0.0 and push it to origin',
-							'  /git-tag v1.0.0 origin message=first-release',
-							'  /git-tag --push v1.0.0             push a tag that is still local',
-							'  /git-tag --push                    push every local tag',
-							'',
-							'List existing versions with /git-tag-show',
-						].join('\n'),
-					);
 				}
 
 				const report = [];
