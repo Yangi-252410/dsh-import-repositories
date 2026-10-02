@@ -1,6 +1,6 @@
 {
   "name": "dsh-git-tools",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "type": "module",
   "description": "Agent tools and human slash commands for git status, diff, log, stage, commit, push, fetch, and pull. Runs git in the Host process, so network operations are not blocked by the agent file sandbox.",
