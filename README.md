@@ -457,9 +457,9 @@ D:/Githubrep/dsh-git-tools
 | 斜杠命令 | 输入 `/git` 列出全部 |
 | `missing peer` 警告 | 可忽略，`@deepseek-ai/*` 由运行时注入 |
 
-**版本对应**：`package.json` 的 `version` 字段（当前 `1.2.1`）是插件自身的版本，
-与仓库的 git 标签（`v1.0.0`、`v1.1.0`）是两套编号。查看已发布的版本请到
-仓库的 Releases 页。
+**版本对应**：`package.json` 的 `version` 字段（当前 `1.2.2`）是插件自身的版本，
+与仓库的 git 标签（如 `v1.2.2`）是两套编号——习惯上让它们对齐，但升插件版本不会自动打标签，
+反之打标签也不会自动改 `package.json`。查看已发布的版本请到仓库的 Releases 页。
 
 ## 已知限制
 
