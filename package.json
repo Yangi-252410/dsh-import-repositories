@@ -1,6 +1,6 @@
 {
   "name": "dsh-git-tools",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "type": "module",
   "description": "Git tools and /git slash commands for DeepSeek Harness, running git in the Host process so push, pull and fetch work even when the session shell is sandboxed.",
   "license": "MIT",
