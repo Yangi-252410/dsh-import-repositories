@@ -1,0 +1,7 @@
+# Bundle patch for dsh-git-tools.
+# Inserts the Host plugin row that registers the git tools for the agent.
+
+- insert:
+    - id: git-tools
+      name: 'dsh-git-tools'
+      config: {}

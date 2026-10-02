@@ -1,0 +1,33 @@
+{
+  "name": "dsh-git-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Git tools for the agent and a Git panel for the DSH Web UI, running git in the host process so network operations are not blocked by the agent file sandbox.",
+  "license": "MIT",
+  "icon": "./icon.svg",
+  "meta": {
+    "title": "Git tools",
+    "description": "Agent tools for git status, diff, log, stage, commit, push, fetch, and pull. Runs git in the Host process, so network operations work even when the session shell is sandboxed."
+  },
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "icon.svg",
+    "locale/*.json",
+    "cordis.patch.yml"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-tools": "^0.1.7-rc.2"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

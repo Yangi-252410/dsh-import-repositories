@@ -1,0 +1,6 @@
+{
+  "dsh-git-tools": {
+    "title": "Git 工具",
+    "description": "为 agent 提供 git status、diff、log、stage、commit、push、fetch、pull 工具。git 在宿主进程中运行，因此即使会话 shell 处于沙箱内，联网操作依然可用。"
+  }
+}

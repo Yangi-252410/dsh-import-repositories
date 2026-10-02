@@ -1,0 +1,6 @@
+{
+  "dsh-git-tools": {
+    "title": "Git tools",
+    "description": "Agent tools for git status, diff, log, stage, commit, push, fetch, and pull. Runs git in the Host process, so network operations work even when the session shell is sandboxed."
+  }
+}
