@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Git tools for the agent and a Git panel for the DSH Web UI, running git in the host process so network operations are not blocked by the agent file sandbox.",
+  "description": "Agent tools and human slash commands for git status, diff, log, stage, commit, push, fetch, and pull. Runs git in the Host process, so network operations are not blocked by the agent file sandbox.",
   "license": "MIT",
   "icon": "./icon.svg",
   "meta": {
     "title": "Git tools",
-    "description": "Agent tools for git status, diff, log, stage, commit, push, fetch, and pull. Runs git in the Host process, so network operations work even when the session shell is sandboxed."
+    "description": "Git tools for the agent plus /git slash commands for people. Runs git in the Host process, so push/pull/fetch work even when the session shell is sandboxed."
   },
   "exports": {
     ".": "./index.js",
