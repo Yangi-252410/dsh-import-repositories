@@ -451,15 +451,67 @@ D:/Githubrep/dsh-git-tools
 
 | 项目 | 说明 |
 |---|---|
-| 生效范围 | 整个 profile，所有工作区 |
-| 生效时机 | 新会话（工具集在会话创建时固定） |
+| 生效范围 | **该 `DSH_HOME` 的这个 profile**（同一根下的所有工作区；其他 `DSH_HOME` 不受影响） |
+| 生效时机 | 重启宿主进程 + 新会话（命令集与工具集在会话创建时固定） |
 | 出现内容 | 8 个 agent 工具（`git_status` 等） |
 | 斜杠命令 | 输入 `/git` 列出全部 |
 | `missing peer` 警告 | 可忽略，`@deepseek-ai/*` 由运行时注入 |
 
-**版本对应**：`package.json` 的 `version` 字段（当前 `1.2.2`）是插件自身的版本，
-与仓库的 git 标签（如 `v1.2.2`）是两套编号——习惯上让它们对齐，但升插件版本不会自动打标签，
+**版本对应**：`package.json` 的 `version` 字段（当前 `1.2.3`）是插件自身的版本，
+与仓库的 git 标签（如 `v1.2.3`）是两套编号——习惯上让它们对齐，但升插件版本不会自动打标签，
 反之打标签也不会自动改 `package.json`。查看已发布的版本请到仓库的 Releases 页。
+
+## 多宿主与更新（重要）
+
+**装在哪里由 `$DSH_HOME` 决定，不由本仓库的位置决定**：
+
+```
+$DSH_HOME/profiles/<profile>/          ← 插件的实际安装目录
+```
+
+`DSH_HOME` 的取值顺序（见 `@deepseek-ai/dsh-home-paths`）：显式配置 → 环境变量 `DSH_HOME`
+→ 默认 `~/.dsh`。桌面应用会把自己的 harness 目录设为 `DSH_HOME`；自定义启动脚本
+（例如 `start-dsh-web.cmd` 里的 `set DSH_HOME=...`）可以指向任意目录。
+
+**因此：不同的 `DSH_HOME` 就是不同的安装，彼此完全独立。** 同一台机器上很容易同时存在多个：
+
+| 宿主 | `DSH_HOME`（示意） | profile |
+|---|---|---|
+| 全局 CLI `dsh web`（环境里没设 `DSH_HOME`） | `~/.dsh` | 默认或 `--profile` 指定 |
+| DSH 桌面应用 | `%APPDATA%\dsh-desktop\harness` | `web` |
+| 自定义脚本启动的实例 | 脚本里 `set DSH_HOME=` 的目录 | `--profile` 指定 |
+
+在某一端安装或更新，**其他端不会跟着变**；同一个根下的多个进程（例如两个 `dsh web`）
+才共享同一份安装。想确认自己在哪一端，就在该端终端执行 `"$env:DSH_HOME"`，
+或直接看界面里 `/git` 有没有命令。
+
+### 两种安装形态：更新方式不同
+
+| 形态 | 出现位置 | 由谁创建 | 如何更新 |
+|---|---|---|---|
+| **普通 pnpm 安装** | `profiles/<p>/node_modules/dsh-git-tools` | CLI `dsh plugin add` 或网页插件页 | `dsh plugin --profile <p> rm dsh-git-tools`，再 `add <spec>`，然后重启进程 |
+| **generation 快照** | `profiles/.generations/live/<包名>+<版本>+<哈希>/`，并由 `profiles/<p>/package.json` 的 `pnpm.overrides` 指向它 | **只有桌面应用**（日志形如 `generation-install: … promoted to …`） | 在桌面插件页重新安装（源填本地路径最稳）。此时 `dsh plugin add` 只改依赖记录，**不会**重投影快照，代码不会变 |
+
+### 更新步骤（通用）
+
+1. 确认目标端的根：`"$env:DSH_HOME"`；
+2. 更新：CLI/网页端用 `dsh plugin --profile <p> rm|add <spec>`；桌面端用插件页重装；
+3. **重启该宿主进程**（`Ctrl+C` 后重新 `dsh web`，或重启桌面应用）；
+4. **新开会话**——旧会话永远是旧命令表；
+5. 自检（都在 `$DSH_HOME/profiles/<p>/` 内）：
+   - `package.json` → `dependencies["dsh-git-tools"]` 的版本；
+   - `pnpm-lock.yaml` → 该包后面的 commit（`git+…#<sha>`）；
+   - `node_modules/dsh-git-tools/index.js` → 是否含新命令（例如 `git-tag-show`）；
+   - 界面上 `/git` 列出的命令。
+
+### 两个必须知道的坑
+
+- **git 依赖被 lock 钉死**：`add github:<owner>/<repo>` 之后，`pnpm-lock.yaml` 记录的是
+  当时解析到的 commit。**再 `add` 同一个 spec 不会换 pin**，必须 `rm` 之后再 `add`
+  （或显式写 `#main` / `#<sha>`），否则会以为"更新了"其实还是旧代码。
+- **填写过的 spec 不会被原样记录**：`package.json` 里存的是解析后的版本号（如 `1.2.3`），
+  所以只看依赖版本**分不出**当初是从本地路径还是 GitHub 装的。要看去
+  `profiles/<p>/.plugin-manager/logs/*/generation.log`（桌面端）或 `pnpm-lock.yaml`（CLI 端）。
 
 ## 已知限制
 
