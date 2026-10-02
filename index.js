@@ -479,10 +479,9 @@ export function apply(ctx) {
 		'  /git-pull [--rebase] [remote=<name>] [branch=<name>] [cwd=<dir>]',
 		'  /git-fetch [--prune] [remote=<name>] [cwd=<dir>]',
 		'  /git-name-set name=<name> email=<email> [remote=<url>] [cwd=<dir>]',
-		'  /git-tag [cwd=<dir>]                 list versions (tags), newest first',
-		'  /git-show <version> [cwd=<dir>]      what one version changed',
-		'  /git-tag-create <version> [message=<text>] [rev=<rev>] [cwd=<dir>]',
-		'  /git-tag-push [version] [remote=<name>] [cwd=<dir>]   (no version = all)',
+		'  /git-tag-show [version] [cwd=<dir>]  list versions (tags), or inspect one',
+		'  /git-tag <version> [<remote>] [message=<text>] [rev=<rev>] [cwd=<dir>]',
+		'  /git-tag --push [version] [<remote>] [cwd=<dir>]     (no version = all tags)',
 		'',
 		'Tips:',
 		'  - The repository is the Session working directory. If it is not a repo,',
@@ -491,8 +490,9 @@ export function apply(ctx) {
 		'  - git-name-set writes the identity GLOBALLY (git config --global), so it',
 		'    applies to every repository on this machine; the remote= target is written',
 		'    only into the chosen repository.',
-		'  - A tag is local until git-tag-push sends it; GitHub shows a version on the',
-		'    Tags/Releases pages only after the tag reaches the remote.',
+		'  - git-tag creates a version AND pushes it to the remote (default origin);',
+		'    git-tag --push sends tags an earlier attempt left local. GitHub shows a',
+		'    version on the Tags/Releases pages only after the tag reaches the remote.',
 	].join('\n');
 
 	/** A success result with no side channel. */
@@ -945,14 +945,51 @@ export function apply(ctx) {
 		};
 
 		yield ctx.commands.register({
-			name: 'git-tag',
-			description: 'Git: list versions (tags), newest first, with the commit each names',
-			input: { hint: '[cwd=<dir>]' },
+			name: 'git-tag-show',
+			description: 'Git: list versions (tags) newest first, or show what one version changed (read-only)',
+			input: { hint: '[version] [cwd=<dir>]' },
 			async handler(invocation) {
 				const parsed = parseArgs(invocation.rawInput, [], ['cwd']);
 				const resolved = await commandTarget(invocation, parsed.options);
 				if (resolved.refusal !== undefined) return resolved.refusal;
 				const { executable, root, signal } = resolved;
+				const version = (parsed.words[0] ?? '').trim();
+
+				// With a version this is the read-only detail view; without one it lists
+				// every tag. Both paths only read, so nothing here can alter the repository.
+				if (version !== '') {
+					// Resolve the version first, so an unknown name is reported as such.
+					const target = await runGit(ctx, executable, ['show', '--no-patch', '--date=iso', '--pretty=format:%h %an <%ae>%n%ad%n%n%s', version], root, signal);
+					if (target.exitCode !== 0) {
+						const detail = target.stderr.trim() || `exit ${target.exitCode}`;
+						return fail(`Unknown version or commit: ${version}\n${detail}\n\nList available versions with /git-tag-show`);
+					}
+
+					// --name-status prints only the changed paths, so the result does not
+					// depend on whether the version is an annotated tag, a lightweight tag,
+					// or a bare commit (their `show --stat` headers differ in shape).
+					// Resolve the commit first: diff-tree does not peel a tag by itself.
+					const commit = await runGit(ctx, executable, ['rev-parse', `${version}^{commit}`], root, signal);
+					if (commit.exitCode !== 0) {
+						return fail(`Unknown version or commit: ${version}\n\nList available versions with /git-tag-show`);
+					}
+					const changed = await runGit(ctx, executable, ['diff-tree', '--no-commit-id', '--name-status', '-r', commit.stdout.trim()], root, signal);
+					if (changed.exitCode !== 0) {
+						return fail(`git diff-tree failed: ${changed.stderr.trim() || `exit ${changed.exitCode}`}`);
+					}
+
+					const files = changed.stdout.trim() === '' ? [] : changed.stdout.trim().split('\n');
+					return ok(
+						[
+							`version: ${version}`,
+							'',
+							target.stdout.trim(),
+							'',
+							files.length === 0 ? '(this version changed no files)' : `changed files (${files.length}):`,
+							...files,
+						].join('\n'),
+					);
+				}
 
 				const listed = await runGit(ctx, executable, ['tag', '--list', '--sort=-v:refname'], root, signal);
 				if (listed.exitCode !== 0) return fail(`git tag failed: ${listed.stderr.trim() || `exit ${listed.exitCode}`}`);
@@ -962,10 +999,11 @@ export function apply(ctx) {
 						[
 							'No versions yet. Create one with:',
 							'',
-							'  /git-tag-create v1.0.0 message=first release',
+							'  /git-tag v1.0.0 message=first-release',
 							'',
 							'A version is a tag: a name pointing at one commit, so it can be',
-							'retrieved later. It stays local until git-tag-push sends it to GitHub.',
+							'retrieved later. /git-tag creates the tag and pushes it to the',
+							'remote in one step.',
 						].join('\n'),
 					);
 				}
@@ -980,149 +1018,163 @@ export function apply(ctx) {
 					lines.push(`  ${tag.padEnd(16)} ${(fields[0] ?? '?').padEnd(9)} ${(fields[1] ?? '?').padEnd(11)} ${subject.stdout.trim()}`);
 				}
 				if (names.length > shown.length) lines.push(`  ... and ${names.length - shown.length} more`);
-				lines.push('', 'Inspect one:  /git-show <version>        Send to GitHub:  /git-tag-push <version>');
+				lines.push('', 'Inspect one:  /git-tag-show <version>        Create and push:  /git-tag <version>');
 				return ok(lines.join('\n'));
 			},
 		});
 
 		yield ctx.commands.register({
-			name: 'git-show',
-			description: 'Git: show what one version (tag or commit) changed',
-			input: { hint: '<version> [cwd=<dir>]' },
+			name: 'git-tag',
+			description: 'Git: name a commit as a version and push it; --push sends tags that already exist',
+			input: { hint: '<version> [<remote>] [message=<text>] [rev=<rev>] [cwd=<dir>]  |  --push [version] [<remote>] [cwd=<dir>]' },
 			async handler(invocation) {
-				const parsed = parseArgs(invocation.rawInput, [], ['cwd']);
+				const parsed = parseArgs(invocation.rawInput, ['--push'], ['message', 'rev', 'remote', 'cwd']);
 				const resolved = await commandTarget(invocation, parsed.options);
 				if (resolved.refusal !== undefined) return resolved.refusal;
 				const { executable, root, signal } = resolved;
-				const version = (parsed.words[0] ?? '').trim();
-				if (version === '') {
+				const pushOnly = parsed.flags.has('--push');
+				const words = parsed.words.map((word) => word.trim()).filter((word) => word !== '');
+				const version = words[0] ?? '';
+				const positionalRemote = words[1];
+
+				// Options take `name=value` in ONE word, so a value containing a space
+				// arrives as extra words. Reject them rather than reading the second word
+				// as the push target, which would send the tag to the wrong place.
+				if (words.length > 2) {
 					return fail(
 						[
-							'A version or commit is required.',
+							`Too many arguments: ${words.map((word) => `"${word}"`).join(' ')}`,
 							'',
-							'  /git-show v1.0.0        show a tagged version',
-							'  /git-show HEAD~2        show an older commit',
-							'  /git-show 9f6af9d       show a commit by hash',
+							'Option values may not contain spaces, so `message=first release`',
+							'arrives here as the two words `message=first` and `release`.',
 							'',
-							'List available versions with /git-tag',
+							'  /git-tag v1.0.0 [<remote>] [message=<text>] [rev=<rev>]',
+							'  /git-tag v1.0.0 message=first-release',
 						].join('\n'),
 					);
 				}
 
-				// Resolve the version first, so an unknown name is reported as such.
-				const target = await runGit(ctx, executable, ['show', '--no-patch', '--date=iso', '--pretty=format:%h %an <%ae>%n%ad%n%n%s', version], root, signal);
-				if (target.exitCode !== 0) {
-					const detail = target.stderr.trim() || `exit ${target.exitCode}`;
-					return fail(`Unknown version or commit: ${version}\n${detail}\n\nList available versions with /git-tag`);
-				}
-
-				// --name-status prints only the changed paths, so the result does not
-				// depend on whether the version is an annotated tag, a lightweight tag,
-				// or a bare commit (their `show --stat` headers differ in shape).
-				// Resolve the commit first: diff-tree does not peel a tag by itself.
-				const commit = await runGit(ctx, executable, ['rev-parse', `${version}^{commit}`], root, signal);
-				if (commit.exitCode !== 0) {
-					return fail(`Unknown version or commit: ${version}\n\nList available versions with /git-tag`);
-				}
-				const changed = await runGit(ctx, executable, ['diff-tree', '--no-commit-id', '--name-status', '-r', commit.stdout.trim()], root, signal);
-				if (changed.exitCode !== 0) {
-					return fail(`git diff-tree failed: ${changed.stderr.trim() || `exit ${changed.exitCode}`}`);
-				}
-
-				const files = changed.stdout.trim() === '' ? [] : changed.stdout.trim().split('\n');
-				return ok(
-					[
-						`version: ${version}`,
-						'',
-						target.stdout.trim(),
-						'',
-						files.length === 0 ? '(this version changed no files)' : `changed files (${files.length}):`,
-						...files,
-					].join('\n'),
-				);
-			},
-		});
-
-		yield ctx.commands.register({
-			name: 'git-tag-create',
-			description: 'Git: name a commit as a version (creates a local tag)',
-			input: { hint: '<version> [message=<text>] [rev=<rev>] [cwd=<dir>]' },
-			async handler(invocation) {
-				const parsed = parseArgs(invocation.rawInput, [], ['message', 'rev', 'cwd']);
-				const resolved = await commandTarget(invocation, parsed.options);
-				if (resolved.refusal !== undefined) return resolved.refusal;
-				const { executable, root, signal } = resolved;
-				const version = (parsed.words[0] ?? '').trim();
+				// The push target is the second word, as in `/git-tag v1.0.0 origin`;
+				// remote=<name> is accepted as an equivalent spelling. It defaults to the
+				// same remote the other network commands use (origin). A positional target
+				// is checked against the configured remotes, so a stray word cannot invent
+				// a destination that git would then fail (or succeed) against.
+				const remotes = await runGit(ctx, executable, ['remote'], root, signal);
+				const knownRemotes = remotes.exitCode === 0 ? remotes.stdout.split('\n').map((line) => line.trim()).filter((line) => line !== '') : [];
+				const remote = (positionalRemote ?? parsed.options.get('remote') ?? 'origin').trim();
 				const message = (parsed.options.get('message') ?? '').trim();
 				const rev = (parsed.options.get('rev') ?? '').trim();
 
-				const problem = tagNameProblem(version);
-				if (problem !== undefined) {
-					return fail(`Invalid version name: ${problem}\n\n  /git-tag-create v1.0.0\n  /git-tag-create v1.0.0 message=first release`);
-				}
-				const refProblem = await gitRefProblem(executable, root, version, signal);
-				if (refProblem !== undefined) {
-					return fail(`Invalid version name: ${refProblem}\n\n  /git-tag-create v1.0.0\n  /git-tag-create v1.0.0 message=first release`);
+				if (remote === '') {
+					return fail(`The push target must not be empty.\n\n  /git-tag ${version === '' ? '--push' : version} origin`);
 				}
 
-				const argv = ['tag'];
-				if (message !== '') argv.push('--annotate', '--message', message);
-				argv.push(version);
-				if (rev !== '') argv.push(rev);
-				const created = await runGit(ctx, executable, argv, root, signal);
-				if (created.exitCode !== 0) {
-					return fail(`git tag failed: ${created.stderr.trim() || created.stdout.trim() || `exit ${created.exitCode}`}`);
+				if (positionalRemote !== undefined && !knownRemotes.includes(remote)) {
+					return fail(
+						[
+							`Unknown remote: ${remote}`,
+							'',
+							knownRemotes.length === 0 ? 'This repository has no remotes configured.' : `Configured remotes: ${knownRemotes.join(', ')}`,
+							'',
+							'If that word was meant to be part of an option value, note that values',
+							'may not contain spaces: `message=first release` is two separate words.',
+							'',
+							`  /git-tag ${version === '' ? '--push' : version} ${knownRemotes[0] ?? 'origin'}`,
+						].join('\n'),
+					);
 				}
 
-				const pointer = await runGit(ctx, executable, ['rev-parse', '--short', version], root, signal);
-				return ok(
-					[
-						`created version ${version} -> ${pointer.stdout.trim()}`,
-						message === '' ? '(lightweight tag: names the commit, no extra message)' : `message: ${message}`,
-						'',
-						'This tag is LOCAL. Send it to GitHub with:',
-						`  /git-tag-push ${version}`,
-					].join('\n'),
-				);
-			},
-		});
-
-		yield ctx.commands.register({
-			name: 'git-tag-push',
-			description: 'Git: push one version tag, or all of them, to a remote',
-			input: { hint: '[version] [remote=<name>] [cwd=<dir>]' },
-			async handler(invocation) {
-				const parsed = parseArgs(invocation.rawInput, [], ['remote', 'cwd']);
-				const resolved = await commandTarget(invocation, parsed.options);
-				if (resolved.refusal !== undefined) return resolved.refusal;
-				const { executable, root, signal } = resolved;
-				const remote = parsed.options.get('remote') ?? 'origin';
-				const version = (parsed.words[0] ?? '').trim();
-
-				// Validate before touching the network: a bad name must not reach git at all.
+				// Validate the name before running anything: a bad name must not reach git,
+				// and in create mode it must certainly not reach the network.
 				if (version !== '') {
 					const problem = tagNameProblem(version);
-					if (problem !== undefined) return fail(`Invalid version name: ${problem}`);
+					if (problem !== undefined) {
+						return fail(`Invalid version name: ${problem}\n\n  /git-tag v1.0.0\n  /git-tag v1.0.0 origin message=first-release`);
+					}
 					const refProblem = await gitRefProblem(executable, root, version, signal);
-					if (refProblem !== undefined) return fail(`Invalid version name: ${refProblem}`);
+					if (refProblem !== undefined) {
+						return fail(`Invalid version name: ${refProblem}\n\n  /git-tag v1.0.0\n  /git-tag v1.0.0 origin message=first-release`);
+					}
 				}
 
+				// In push mode the first word is the version, so `/git-tag --push origin`
+				// would look for a tag named origin. Name that confusion explicitly.
+				if (pushOnly && knownRemotes.includes(version)) {
+					const sameName = await runGit(ctx, executable, ['tag', '--list', version], root, signal);
+					if (sameName.stdout.trim() === '') {
+						return fail(
+							[
+								`${version} is a configured remote, not a tag.`,
+								'',
+								`  /git-tag --push remote=${version}        push every tag to it`,
+								`  /git-tag --push <version> ${version}     push one tag to it`,
+							].join('\n'),
+						);
+					}
+				}
+
+				// Without --push a version is mandatory: this command does not list tags.
+				if (!pushOnly && version === '') {
+					return fail(
+						[
+							'A version name is required.',
+							'',
+							'  /git-tag v1.0.0                    create v1.0.0 and push it to origin',
+							'  /git-tag v1.0.0 origin message=first-release',
+							'  /git-tag --push v1.0.0             push a tag that is still local',
+							'  /git-tag --push                    push every local tag',
+							'',
+							'List existing versions with /git-tag-show',
+						].join('\n'),
+					);
+				}
+
+				const report = [];
+
+				// Create first: it is local and fast, and it is what the network step sends.
+				if (!pushOnly) {
+					const argv = ['tag'];
+					if (message !== '') argv.push('--annotate', '--message', message);
+					argv.push(version);
+					if (rev !== '') argv.push(rev);
+					const created = await runGit(ctx, executable, argv, root, signal);
+					if (created.exitCode !== 0) {
+						return fail(`git tag failed: ${created.stderr.trim() || created.stdout.trim() || `exit ${created.exitCode}`}`);
+					}
+					const pointer = await runGit(ctx, executable, ['rev-parse', '--short', version], root, signal);
+					report.push(`created version ${version} -> ${pointer.stdout.trim()}`);
+					report.push(message === '' ? '(lightweight tag: names the commit, no extra message)' : `message: ${message}`);
+				}
+
+				// Pushing a bare tag name resolves refs/tags/<name>, so no refspec is needed.
+				// `--push` without a version sends every tag, matching `git push --tags`.
 				const argv = ['push', '--porcelain'];
 				if (version === '') argv.push('--tags', remote);
 				else argv.push(remote, version);
-				const result = await runGit(ctx, executable, argv, root, signal, OUTPUT_MAX_BYTES, NETWORK_TIMEOUT_MS);
-				if (result.exitCode !== 0) {
-					const detail = result.stderr.trim() || result.stdout.trim();
-					return fail(`git push failed: ${detail}`);
+				const pushed = await runGit(ctx, executable, argv, root, signal, OUTPUT_MAX_BYTES, NETWORK_TIMEOUT_MS);
+				if (pushed.exitCode !== 0) {
+					const detail = pushed.stderr.trim() || pushed.stdout.trim();
+					if (pushOnly) return fail(`git push failed: ${detail}`);
+					// The tag already exists locally, so report that and how to retry the push.
+					return fail(
+						[
+							...report,
+							'',
+							`git push failed: ${detail}`,
+							'',
+							'The tag exists locally but is NOT on the remote yet. Retry just the push:',
+							`  /git-tag --push ${version}${remote === 'origin' ? '' : ` ${remote}`}`,
+						].join('\n'),
+					);
 				}
-				return ok(
-					[
-						version === '' ? `pushed all tags to ${remote}` : `pushed ${version} to ${remote}`,
-						result.stdout.trim(),
-						'',
-						'GitHub now lists this version on the repository Tags and Releases pages.',
-					].join('\n'),
+
+				report.push(
+					version === '' ? `pushed all tags to ${remote}` : `pushed ${version} to ${remote}`,
+					pushed.stdout.trim(),
+					'',
+					'GitHub now lists this version on the repository Tags and Releases pages.',
 				);
+				return ok(report.join('\n'));
 			},
 		});
 		//#endregion

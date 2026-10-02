@@ -105,10 +105,8 @@ agent 的 shell 运行在 `workspace-write` 文件沙箱里，实测该环境**�
 | `/git-pull` | `--rebase` `remote=<name>` `branch=<name>` `cwd=<dir>` | **是** |
 | `/git-push` | `--set-upstream` `remote=<name>` `branch=<name>` `cwd=<dir>` | **是** |
 | `/git-name-set` | `name=<name>` `email=<email>` `remote=<url>` `cwd=<dir>` | 否 |
-| `/git-tag` | `cwd=<dir>` | 否 |
-| `/git-show` | `<version>` `cwd=<dir>` | 否 |
-| `/git-tag-create` | `<version>` `message=<text>` `rev=<rev>` `cwd=<dir>` | 否 |
-| `/git-tag-push` | `[version]` `remote=<name>` `cwd=<dir>` | **是** |
+| `/git-tag-show` | `[version]` `cwd=<dir>` | 否 |
+| `/git-tag` | `<version>` `[<remote>]` `message=<text>` `rev=<rev>` `cwd=<dir>`；或 `--push [version] [<remote>]` | **是** |
 
 **每一个命令都支持 `cwd=<dir>`**，用于指定仓库所在目录（见下方「关于仓库定位」）。
 
@@ -276,17 +274,19 @@ git 里**没有自动的版本号**。每 `git commit` 一次就产生一个提�
 
 - **标签指向一个提交**，所以任何版本都能被永久取回（只要该提交存在）
 - **标签是本地对象**，`git tag` 只写进你的本地仓库
-- **必须推送到远端**（`git-tag-push`），GitHub 才会在 **Tags** 和 **Releases** 页显示它
+- **必须推送到远端**（`/git-tag` 创建时就会推送），GitHub 才会在 **Tags** 和 **Releases** 页显示它
 - **删掉标签不影响提交**；提交本身不会被标签"绑定"
 
-### 四个命令
+### 两个命令
+
+打标签与推送被合并进同一条命令，读写分离：**`/git-tag-show` 只读**，**`/git-tag` 负责写和推**。
 
 | 命令 | 作用 | 联网 |
 |---|---|---|
-| `/git-tag` | 列出所有版本（最新在前，含哈希、日期、主题） | 否 |
-| `/git-show <version>` | 查看某个版本：标签信息 + 改动的文件 | 否 |
-| `/git-tag-create <version>` | 给某个提交打标签（版本名 + 可选说明） | 否 |
-| `/git-tag-push [version]` | 把一个（或全部）标签推到 GitHub | **是** |
+| `/git-tag-show` | 列出所有版本（最新在前，含哈希、日期、主题） | 否 |
+| `/git-tag-show <version>` | 查看某个版本：标签信息 + 改动的文件 | 否 |
+| `/git-tag <version> [<remote>]` | 打标签并推送到远端（默认 `origin`） | **是** |
+| `/git-tag --push [version]` | 推送已存在的标签；省略版本则推送全部 | **是** |
 
 ### 完整工作流
 
@@ -295,29 +295,44 @@ git 里**没有自动的版本号**。每 `git commit` 一次就产生一个提�
 /git-status cwd=D:\Githubrep\skills-introduction-to-github
 /git-log 5 cwd=D:\Githubrep\skills-introduction-to-github
 
-# 2. 打版本标签（附注标签，带说明）
-/git-tag-create v1.0.0 message=首个可用版本 cwd=D:\Githubrep\skills-introduction-to-github
+# 2. 打版本标签并推送（一步完成；省略远端则用 origin）
+/git-tag v1.0.0 message=首个可用版本 cwd=D:\Githubrep\skills-introduction-to-github
 
-# 3. 本地确认
-/git-tag cwd=D:\Githubrep\skills-introduction-to-github
+# 3. 本地确认（列出全部版本）
+/git-tag-show cwd=D:\Githubrep\skills-introduction-to-github
 
-# 4. 推到 GitHub —— 之后 Tags/Releases 页才会出现这个版本
-/git-tag-push v1.0.0 cwd=D:\Githubrep\skills-introduction-to-github
+# 4. 若推送失败（标签已留在本地），只重推不重复创建
+/git-tag --push v1.0.0 cwd=D:\Githubrep\skills-introduction-to-github
 
 # 5. 随时回顾某个版本改了什么
-/git-show v1.0.0 cwd=D:\Githubrep\skills-introduction-to-github
+/git-tag-show v1.0.0 cwd=D:\Githubrep\skills-introduction-to-github
 ```
 
 ### 参数细节
 
-**`/git-tag-create`**
+**`/git-tag <version>`**（创建 + 推送）
 
 | 参数 | 必填 | 说明 |
 |---|---|---|
-| `<version>` | ✅ | 版本名，如 `v1.0.0`。位置参数 |
+| `<version>` | ✅ | 版本名，如 `v1.0.0`。**第一个**位置参数 |
+| `[<remote>]` | — | **推送目标**，**第二个**位置参数，如 `/git-tag v1.0.0 origin`；省略则用默认远端 `origin`。也可写成 `remote=<name>`，两者等价 |
 | `message=<text>` | — | 给出则创建**附注标签**（带说明与打标签者信息）；省略则创建**轻量标签** |
 | `rev=<rev>` | — | 给指定提交打标签；省略则给当前 `HEAD` 打 |
 | `cwd=<dir>` | — | 仓库目录 |
+
+⚠️ **两个位置参数就是上限，且选项值不能含空格。** 解析按空格分词，所以
+`message=first release` 会变成 `message=first` 加一个游离词 `release`。命令**不会**
+把它当成推送目标——它会拒绝并说明原因（游离词若恰好是已配置的远端名，仍会被当作
+推送目标，所以给 message 赋值时请勿留空格）：
+
+```
+/git-tag v1.0.0 message=first release        ❌ 报 Unknown remote: release
+/git-tag v1.0.0 origin message=first release ❌ 报 Too many arguments
+/git-tag v1.0.0 message=first-release        ✅
+```
+
+第二个位置参数会**对照 `git remote` 校验**：写成未配置的名字会直接报错并列出可用远端，
+不会静默推到一个不存在的目标。`remote=<name>` 等价于第二个位置参数。
 
 **版本名规则**（同时用内置正则与 `git check-ref-format` 双重校验）：
 
@@ -330,13 +345,25 @@ git 里**没有自动的版本号**。每 `git commit` 一次就产生一个提�
 | 不能以 `.` 或 `.lock` 结尾 | ❌ `v1.0.0.lock` |
 | 允许斜杠（可做分层命名） | ✅ `release/v1.0.0` |
 
-**`/git-tag-push`**
+**`/git-tag --push [version]`**（只推送，不创建）
 
 | 参数 | 必填 | 说明 |
 |---|---|---|
 | `[version]` | — | **省略则推送全部本地标签**（`push --tags`） |
-| `remote=<name>` | — | 远端名，默认 `origin` |
+| `[<remote>]` | — | 推送目标，第二个位置参数，默认 `origin`（`remote=<name>` 等价） |
 | `cwd=<dir>` | — | 仓库目录 |
+
+⚠️ `--push` 之后的**第一个词永远是版本名**，所以 `/git-tag --push origin` 是在找名为
+`origin` 的标签。想把全部标签推到某个远端，请写 `remote=`：
+
+```
+/git-tag --push origin              ❌ 报 "origin is a configured remote, not a tag"
+/git-tag --push remote=origin       ✅ 全部标签推到 origin
+/git-tag --push v1.0.0 origin       ✅ 只推 v1.0.0 到 origin
+```
+
+**执行顺序**：先创建（本地、快），再推送。两者各自报告结果；推送失败时标签**已经存在**
+于本地，命令会明确告诉你这一点并给出重推命令，不会让你误以为版本没打成。
 
 ### 与 GitHub Releases 的关系
 
@@ -363,10 +390,12 @@ https://github.com/<用户>/<仓库>/releases
 
 - **没有删除标签的命令**。要删请用终端 `git tag -d <版本>`（本地）或
   `git push origin --delete <版本>`（远端）
-- **不能检出/切换到某个版本**。查看用 `/git-show`，真要切过去需要
+- **不能检出/切换到某个版本**。查看用 `/git-tag-show <版本>`，真要切过去需要
   `git switch --detach <版本>`
 - **不支持签名标签**（`git tag -s`）
-- **一次 `/git-tag-push` 不带参数会推送全部标签**，注意目标仓库是否需要这么多版本
+- **没有"只创建不推送"的用法**：`/git-tag` 一律创建后推送。推送失败时标签留在本地，
+  用 `/git-tag --push <版本>` 单独重推；不需要推送的标签请在终端用 `git tag` 手动创建
+- **一次 `/git-tag --push` 不带版本会推送全部标签**，注意目标仓库是否需要这么多版本
 
 ## 提供的 agent 工具
 
@@ -405,13 +434,13 @@ https://github.com/Yangi-252410/dsh-import-repositories
 先把仓库克隆到本机，然后填入**该目录的绝对路径**：
 
 ```
-D:\Githubrep\skills-introduction-to-github
+D:\Githubrep\dsh-git-tools
 ```
 
 ⚠️ 用**正斜杠**更稳妥（GUI 输入框里反斜杠可能被转义吃掉）：
 
 ```
-D:/Githubrep/skills-introduction-to-github
+D:/Githubrep/dsh-git-tools
 ```
 
 ### 方式 3：由 agent 安装
@@ -428,7 +457,7 @@ D:/Githubrep/skills-introduction-to-github
 | 斜杠命令 | 输入 `/git` 列出全部 |
 | `missing peer` 警告 | 可忽略，`@deepseek-ai/*` 由运行时注入 |
 
-**版本对应**：`package.json` 的 `version` 字段（当前 `0.1.0`）是插件自身的版本，
+**版本对应**：`package.json` 的 `version` 字段（当前 `1.2.1`）是插件自身的版本，
 与仓库的 git 标签（`v1.0.0`、`v1.1.0`）是两套编号。查看已发布的版本请到
 仓库的 Releases 页。
 
