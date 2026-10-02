@@ -8,23 +8,61 @@
 
 | 项目 | 版本 |
 |---|---|
-| **DSH 运行时** | **`0.1.7-rc.2`** |
+| **已验证的 DSH 版本** | **`0.1.1-rc.2`** 与 **`0.1.7-rc.2`** |
 | Node.js | `v24.9.0`（DSH 随包自带） |
 | Git | `2.55.0.windows.3` |
 | 操作系统 | Windows 11（build 10.0.26200） |
 
-**说明：**
+### 兼容性范围
 
-- 上面的 DSH 版本是**本插件实际测试通过的版本**。`0.1.7-rc.2` 是 `@deepseek-ai/dsh`、
-  `@deepseek-ai/dsh-tools`、`@deepseek-ai/dsh-base` 三者一致的版本号。
-- 声明在 `package.json` 的 `peerDependencies` 是 `@deepseek-ai/cordis@^4.0.1` 与
-  `@deepseek-ai/dsh-tools@^0.1.7-rc.2`；这两个包由 DSH 运行时注入，**不需要 pnpm 安装**，
-  所以安装时若出现 `missing peer` 警告可以忽略。
-- 插件依赖两个宿主服务：`ctx.subprocess`（执行 git）与 `ctx.commands`（注册斜杠命令）。
-  两者都由 DSH 随包提供，在 `0.1.7-rc.2` 上均已验证可用。
-- **换用其他 DSH 版本时请自行验证。** 尤其是斜杠命令的注册契约
-  （`ctx.commands.register({ definitionId, name, description, handler })`）与
-  命令名规则（`/^[a-z][a-z0-9_-]*$/`）属于宿主内部约定，跨版本可能变化。
+本插件已在**两个不同年代的 DSH 版本**上实测通过，两者都能正常加载并注册全部
+8 个 agent 工具与 13 个斜杠命令：
+
+| DSH 版本 | 场景 | 结果 |
+|---|---|---|
+| `0.1.1-rc.2` | 全局 CLI（`dsh web --port 8080`） | ✅ 通过 |
+| `0.1.7-rc.2` | DSH Desktop | ✅ 通过 |
+
+之所以能跨这两个版本，是因为插件**只使用两者共有的 API**：
+
+- 宿主服务 `ctx.subprocess`（执行 git）与 `ctx.commands`（注册斜杠命令）
+- 命令注册字段仅用 `name` / `description` / `handler` / `input.hint`
+
+### 刻意避开的字段
+
+`CommandDefinitionId`（来自 `@deepseek-ai/dsh-commands/brand`）**只存在于较新版本**，
+`0.1.1-rc.2` 的 `brand` 模块仅导出 `CommandId`。它的类型声明是：
+
+```ts
+export interface CommandDefinition {
+    readonly name: string;
+    readonly description: string;
+    readonly input?: CommandInputDescriptor;
+    readonly recordInput?: boolean;
+    readonly handler: (invocation) => CommandResult | Promise<CommandResult>;
+}
+```
+
+**没有 `definitionId`。** 早期版本曾依赖该字段，导致在 `0.1.1-rc.2` 上加载时报：
+
+```
+SyntaxError: The requested module '@deepseek-ai/dsh-commands/brand'
+does not provide an export named 'CommandDefinitionId'
+```
+
+现已完全移除。因为 `definitionId` 在新版中本就是**可选**字段，移除不影响新版行为，
+却让旧版也能加载。
+
+### 其他说明
+
+- `package.json` 的 `peerDependencies` 声明了 `@deepseek-ai/cordis@^4.0.1` 与
+  `@deepseek-ai/dsh-tools@^0.1.1-rc.2`（下限设为已验证的最低版本，以便旧版也能安装）。
+  这两个包由 DSH 运行时注入，**不需要 pnpm 安装**，安装时若出现 `missing peer` 警告可以忽略。
+- **升级 DSH 后请重新验证。** 尤其是斜杠命令的注册契约与命令名规则
+  （`/^[a-z][a-z0-9_-]*$/`）属于宿主内部约定，跨版本可能变化；本插件之所以兼容两个版本，
+  正是因为它只依赖这些约定中最稳定的部分。
+- 使用新版本专有 API 会立刻破坏旧版兼容。若确需使用，请在本文档的兼容表中
+  注明最低版本要求。
 
 ## 为什么需要它
 
