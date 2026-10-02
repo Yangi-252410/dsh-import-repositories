@@ -1,14 +1,36 @@
 {
   "name": "dsh-git-tools",
   "version": "1.2.3",
-  "private": true,
   "type": "module",
-  "description": "Agent tools and human slash commands for git status, diff, log, stage, commit, push, fetch, and pull. Runs git in the Host process, so network operations are not blocked by the agent file sandbox.",
+  "description": "Git tools and /git slash commands for DeepSeek Harness, running git in the Host process so push, pull and fetch work even when the session shell is sandboxed.",
   "license": "MIT",
   "icon": "./icon.svg",
   "meta": {
     "title": "Git tools",
     "description": "Git tools for the agent plus /git slash commands for people. Runs git in the Host process, so push/pull/fetch work even when the session shell is sandboxed."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Yangi-252410/dsh-import-repositories.git"
+  },
+  "homepage": "https://github.com/Yangi-252410/dsh-import-repositories#readme",
+  "bugs": {
+    "url": "https://github.com/Yangi-252410/dsh-import-repositories/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "deepseek",
+    "deepseek-harness",
+    "cordis",
+    "git",
+    "slash-commands",
+    "agent-tools"
+  ],
+  "author": "Yangi",
+  "engines": {
+    "node": ">=20"
   },
   "exports": {
     ".": "./index.js",
