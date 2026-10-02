@@ -14,7 +14,6 @@
  */
 import { homedir } from 'node:os';
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { CommandDefinitionId } from '@deepseek-ai/dsh-commands/brand';
 
 /** Services this plugin consumes. Every service read from `ctx` must be declared here. */
 export const inject = ['commands', 'tools', 'subprocess'];
@@ -630,7 +629,6 @@ export function apply(ctx) {
 
 	ctx.effect(function* () {
 		yield ctx.commands.register({
-			definitionId: CommandDefinitionId('dsh-git-tools/status'),
 			name: 'git-status',
 			description: 'Git: branch, upstream divergence, and changed files',
 			async handler(invocation) {
@@ -644,7 +642,6 @@ export function apply(ctx) {
 		});
 
 		yield ctx.commands.register({
-			definitionId: CommandDefinitionId('dsh-git-tools/diff'),
 			name: 'git-diff',
 			description: 'Git: show a diff (working tree by default, --staged for the index)',
 			input: { hint: '[--staged] [rev=<rev>] [cwd=<dir>]' },
@@ -665,7 +662,6 @@ export function apply(ctx) {
 		});
 
 		yield ctx.commands.register({
-			definitionId: CommandDefinitionId('dsh-git-tools/log'),
 			name: 'git-log',
 			description: 'Git: list recent commits (one line each)',
 			input: { hint: '[n] [cwd=<dir>]' },
@@ -689,7 +685,6 @@ export function apply(ctx) {
 		});
 
 		yield ctx.commands.register({
-			definitionId: CommandDefinitionId('dsh-git-tools/commit'),
 			name: 'git-commit',
 			description: 'Git: create a commit from the index (or --all for tracked changes)',
 			input: { hint: '[--all] [--amend] <message> [cwd=<dir>]' },
@@ -725,7 +720,6 @@ export function apply(ctx) {
 		});
 
 		yield ctx.commands.register({
-			definitionId: CommandDefinitionId('dsh-git-tools/push'),
 			name: 'git-push',
 			description: 'Git: push the current branch to a remote (never forced)',
 			input: { hint: '[--set-upstream] [remote=<name>] [branch=<name>] [cwd=<dir>]' },
@@ -753,7 +747,6 @@ export function apply(ctx) {
 		});
 
 		yield ctx.commands.register({
-			definitionId: CommandDefinitionId('dsh-git-tools/pull'),
 			name: 'git-pull',
 			description: 'Git: fetch and integrate the upstream branch',
 			input: { hint: '[--rebase] [remote=<name>] [branch=<name>] [cwd=<dir>]' },
@@ -777,7 +770,6 @@ export function apply(ctx) {
 		});
 
 		yield ctx.commands.register({
-			definitionId: CommandDefinitionId('dsh-git-tools/fetch'),
 			name: 'git-fetch',
 			description: 'Git: fetch from a remote and report ahead/behind',
 			input: { hint: '[--prune] [remote=<name>] [cwd=<dir>]' },
@@ -813,7 +805,6 @@ export function apply(ctx) {
 		});
 
 		yield ctx.commands.register({
-			definitionId: CommandDefinitionId('dsh-git-tools/name-set'),
 			name: 'git-name-set',
 			description: 'Git: set the global commit identity and optionally repoint this repository at another URL',
 			input: { hint: 'name=<name> email=<email> [remote=<url>] [cwd=<dir>]' },
@@ -954,7 +945,6 @@ export function apply(ctx) {
 		};
 
 		yield ctx.commands.register({
-			definitionId: CommandDefinitionId('dsh-git-tools/tag-list'),
 			name: 'git-tag',
 			description: 'Git: list versions (tags), newest first, with the commit each names',
 			input: { hint: '[cwd=<dir>]' },
@@ -996,7 +986,6 @@ export function apply(ctx) {
 		});
 
 		yield ctx.commands.register({
-			definitionId: CommandDefinitionId('dsh-git-tools/show'),
 			name: 'git-show',
 			description: 'Git: show what one version (tag or commit) changed',
 			input: { hint: '<version> [cwd=<dir>]' },
@@ -1055,7 +1044,6 @@ export function apply(ctx) {
 		});
 
 		yield ctx.commands.register({
-			definitionId: CommandDefinitionId('dsh-git-tools/tag-create'),
 			name: 'git-tag-create',
 			description: 'Git: name a commit as a version (creates a local tag)',
 			input: { hint: '<version> [message=<text>] [rev=<rev>] [cwd=<dir>]' },
@@ -1100,7 +1088,6 @@ export function apply(ctx) {
 		});
 
 		yield ctx.commands.register({
-			definitionId: CommandDefinitionId('dsh-git-tools/tag-push'),
 			name: 'git-tag-push',
 			description: 'Git: push one version tag, or all of them, to a remote',
 			input: { hint: '[version] [remote=<name>] [cwd=<dir>]' },
@@ -1141,7 +1128,6 @@ export function apply(ctx) {
 		//#endregion
 
 		yield ctx.commands.register({
-			definitionId: CommandDefinitionId('dsh-git-tools/help'),
 			name: 'git',
 			description: 'Git: list the git commands this plugin provides',
 			async handler() {
